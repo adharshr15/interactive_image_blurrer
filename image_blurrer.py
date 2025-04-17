@@ -3,7 +3,8 @@ from tkinter import filedialog
 from tkinter import messagebox
 from PIL import Image, ImageTk
 
-current_file = None
+current_file, current_image = None, None
+
 
 def open_file():
     file = filedialog.askopenfilename(
@@ -14,6 +15,7 @@ def open_file():
         try:
             image = Image.open(file)
             
+            # resize image to fit frame
             og_width, og_height = image.size
             width_to_height = og_height / og_width
             
@@ -26,19 +28,49 @@ def open_file():
             
             image_tk = ImageTk.PhotoImage(image)
             
+            # display image in frame
             image_label.config(image=image_tk)
             image_label.image = image_tk
             
+            root.title(f"Opened: {file}")
+            
             global current_file
             current_file = file
-        except:
-            return
+            
+            global current_image
+            current_image = image
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open image: {e}")
+    else: 
+        messagebox.showerror("No Image Selected", "No Image Selected")
+        
     
 def save_file():
-    return
+    global current_file, current_image
+    if current_file and current_image: 
+        with open(current_file, "w") as file:
+            try:
+                current_image.save(current_file)
+                messagebox.showinfo("Success", "Image saved successfully.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save image: {e}")
+
+    
     
 def save_file_as():
-    return
+    global current_file, current_image
+    file = filedialog.asksaveasfilename(
+        defaultextension=".png",
+        filetypes=[("PNG", "*.png"), ("JPEG", "*.jpg"), ("WebP", "*.webp")]
+    )
+    if file and current_image:
+        try:
+            current_image.save(file)
+            current_file = file
+            messagebox.showinfo("Success", "Image saved successfully.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save image: {e}")
+        
 
 def show_file_menu(event):
     file_menu.post(event.x_root, event.y_root)
