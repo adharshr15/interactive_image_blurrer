@@ -1,4 +1,6 @@
 import tkinter as tk
+import numpy as np
+import cv2
 from tkinter import filedialog
 from tkinter import messagebox
 from PIL import Image, ImageTk, ImageFilter, ImageDraw
@@ -87,6 +89,7 @@ def on_canvas_click(event):
     # change button state
     if len(polygon_points) >= 3:
         blur_btn.config(state='normal')
+        remove_btn.config(state='normal')
         
     # create polygon on canvas from user selection
     if len(polygon_points) > 1:
@@ -118,8 +121,39 @@ def apply_polygon_blur():
     display_image(current_image)
     
     # change button state
-    blur_btn.config(state='normal')
+    blur_btn.config(state='disabled')
+    remove_btn.config(state='disabled')
     
+# function to remove from user selection using content aware fill
+def apply_polygon_remove():
+    global current_image, polygon_points
+    
+    if not current_image or len(polygon_points) < 3:
+        messagebox.showerror("Error", "You need to select at least 3 points.")
+        return
+    
+    # convert PIL image to cv image
+    cv_image = cv2.cvtColor(np.array(current_image), cv2.COLOR_RGB2BGR)
+    
+    # create mask
+    mask = np.zeros((current_image.height, current_image.width), dtype=np.uint8)
+    cv2.fillPoly(mask, [np.array(polygon_points, dtype=np.int32)], 255)
+    
+    # perform removal
+    inpainted = cv2.inpaint(cv_image, mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
+    
+    # convert cv back to PIL image
+    result = Image.fromarray(cv2.cvtColor(inpainted, cv2.COLOR_BGR2RGB))
+    
+    # update and display
+    current_image = result
+    polygon_points = []
+    image_canvas.delete('all')
+    display_image(current_image)
+    
+    # change button state
+    remove_btn.config(state='disabled')
+    blur_btn.config(state='disabled')
 
 
 root = tk.Tk()
@@ -143,6 +177,9 @@ file_btn.bind("<Button-1>", show_file_menu)
 
 blur_btn = tk.Button(root, text='Blur', state='disabled', bg='light green', command=apply_polygon_blur)
 blur_btn.pack(pady=10)
+
+remove_btn = tk.Button(root, text='Remove', state='disabled', bg='light blue', command=apply_polygon_remove)
+remove_btn.pack(pady=10)
 
 # image editor
 
