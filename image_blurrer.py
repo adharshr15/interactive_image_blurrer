@@ -6,6 +6,7 @@ from tkinter import messagebox
 from PIL import Image, ImageTk, ImageFilter, ImageDraw
 
 current_file, current_image = None, None
+last_image = []
 polygon_points = []
 
 # function to display image as a canvas in the editor
@@ -60,6 +61,9 @@ def save_file():
                 messagebox.showinfo("Success", "Image saved successfully.")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to save image: {e}")
+    
+    last_image = []
+    current_image, current_file = None, None
 
 # function to save file as   
 def save_file_as():
@@ -87,6 +91,9 @@ def on_canvas_click(event):
     image_canvas.create_oval(x-2, y-2, x+2, y+2, fill='red')
     
     # change button state
+    if len(polygon_points) > 0:
+        undo_btn.config(state='normal')
+    
     if len(polygon_points) >= 3:
         blur_btn.config(state='normal')
         remove_btn.config(state='normal')
@@ -114,7 +121,10 @@ def apply_polygon_blur():
     # composite the two images using the mask
     result = Image.composite(blurred, original, mask)
     
-    # update and display
+    # update last image 
+    last_image.append(current_image)
+    
+    # update current image and display
     current_image = result
     polygon_points = []
     image_canvas.delete("all")
@@ -123,6 +133,7 @@ def apply_polygon_blur():
     # change button state
     blur_btn.config(state='disabled')
     remove_btn.config(state='disabled')
+    if not last_image: undo_btn.config(state='disabled')
     
 # function to remove from user selection using content aware fill
 def apply_polygon_remove():
@@ -145,7 +156,10 @@ def apply_polygon_remove():
     # convert cv back to PIL image
     result = Image.fromarray(cv2.cvtColor(inpainted, cv2.COLOR_BGR2RGB))
     
-    # update and display
+    # update last image
+    last_image.append(current_image)
+    
+    # update current image and display
     current_image = result
     polygon_points = []
     image_canvas.delete('all')
@@ -154,8 +168,29 @@ def apply_polygon_remove():
     # change button state
     remove_btn.config(state='disabled')
     blur_btn.config(state='disabled')
+    if not last_image: undo_btn.config(state="disabled")
 
-
+def undo():
+    global current_image, polygon_points
+    
+    if not current_image:
+        messagebox.showerror("Error", "No Image Selected")
+        return
+    
+    # selection
+    if len(polygon_points) > 0:
+        polygon_points = []
+        image_canvas.delete("all")
+        display_image(current_image)
+    # image
+    elif last_image:
+        current_image = last_image.pop()
+        display_image(current_image)
+        
+    if not last_image:
+            undo_btn.config(state='disabled')
+    
+        
 root = tk.Tk()
 root.title("Image Blurrer")
 root.geometry("800x600")
@@ -175,11 +210,17 @@ file_menu.add_command(label="Save As", command=save_file_as)
 
 file_btn.bind("<Button-1>", show_file_menu)
 
+# buttons
+
 blur_btn = tk.Button(root, text='Blur', state='disabled', bg='light green', command=apply_polygon_blur)
 blur_btn.pack(pady=10)
 
 remove_btn = tk.Button(root, text='Remove', state='disabled', bg='light blue', command=apply_polygon_remove)
 remove_btn.pack(pady=10)
+
+undo_btn = tk.Button(root, text='Undo', state='disabled', bg='red', command=undo)
+undo_btn.pack(pady=10)
+
 
 # image editor
 
@@ -191,7 +232,6 @@ image_canvas = tk.Canvas(image_frame, width=700, height=500, bg="gray")
 image_canvas.place(relx=0.5, rely=0.5, anchor="center")
 
 image_canvas.bind("<Button-1>", on_canvas_click)
-
 
 
 root.mainloop()
