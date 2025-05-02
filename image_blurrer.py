@@ -1,13 +1,15 @@
 import tkinter as tk
 import numpy as np
 import cv2
-from tkinter import filedialog
-from tkinter import messagebox
+from tkinter import filedialog, messagebox, simpledialog
 from PIL import Image, ImageTk, ImageFilter, ImageDraw
+from gaussian_blur import apply_gaussian_blur
 
 current_file, current_image = None, None
 last_image = []
 polygon_points = []
+blur_radius, remove_radius = 10, 3
+image_height, image_width = None, None
 
 # function to display image as a canvas in the editor
 def display_image(image): 
@@ -25,23 +27,25 @@ def open_file():
         try:
             image = Image.open(file)
             
-            # resize image to fit frame
-            og_width, og_height = image.size
-            width_to_height = og_height / og_width
-            
+            # max width and height
             max_width = 700
+            max_height = 500
+
+            orig_width, orig_height = image.size
+            ratio = min(max_width / orig_width, max_height / orig_height)
+            new_width = int(orig_width * ratio)
+            new_height = int(orig_height * ratio)
             
-            new_width = max_width
-            new_height = int(new_width * width_to_height)
+            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
             
+            # resize with aspect ratio preserved
             image = image.resize((new_width, new_height))
             
-            image_tk = ImageTk.PhotoImage(image)
+            global image_height, image_width
+            image_width, image_height = image.size
             
-            global current_file
+            global current_file, current_image
             current_file = file
-            
-            global current_image
             current_image = image
             
             # display image in canvas
@@ -50,6 +54,8 @@ def open_file():
             messagebox.showerror("Error", f"Failed to open image: {e}")
     else: 
         messagebox.showerror("No Image Selected", "No Image Selected")
+        
+    file_btn.config(relief=tk.RAISED)
         
 # function to save file 
 def save_file():
@@ -64,6 +70,8 @@ def save_file():
     
     last_image = []
     current_image, current_file = None, None
+    
+    file_btn.config(relief=tk.RAISED)
 
 # function to save file as   
 def save_file_as():
@@ -79,10 +87,29 @@ def save_file_as():
             messagebox.showinfo("Success", "Image saved successfully.")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save image: {e}")
+            
+    file_btn.config(relief=tk.RAISED)
         
 
 def show_file_menu(event):
     file_menu.post(event.x_root, event.y_root)
+    
+def set_blur_radius():
+    global blur_radius
+    value = simpledialog.askfloat('Blur Radius', "Enter blur radius (e.g., 5.0):", minvalue=0.0)
+    if value is not None:
+        blur_radius = value
+    settings_btn.config(relief=tk.RAISED)
+    
+def set_remove_radius():
+    global remove_radius
+    value = simpledialog.askfloat('Remove Radius', "Enter remove radius (e.g., 5.0)", minvalue=0.0)
+    if value is not None:
+        remove_radius = value
+    settings_btn.config(relief=tk.RAISED)
+
+def show_settings_menu(event):
+    settings_menu.post(event.x_root, event.y_root)
     
 # function to allow add pixel points that users select to selection
 def on_canvas_click(event):
@@ -104,7 +131,7 @@ def on_canvas_click(event):
 
 # function to apply blur to user selection
 def apply_polygon_blur():
-    global current_image, polygon_points
+    global current_image, polygon_points, blur_radius
     
     if not current_image or len(polygon_points) < 3:
         messagebox.showerror("Error", "You need to select at least 3 points.")
@@ -112,7 +139,8 @@ def apply_polygon_blur():
     
     # create original and blurred images
     original = current_image.copy()
-    blurred = current_image.filter(ImageFilter.GaussianBlur(radius=10))
+    
+    blurred = apply_gaussian_blur(current_image, blur_radius)
     
     # create mask image to subtract blurred part from original
     mask = Image.new('L', current_image.size, 0)
@@ -137,7 +165,7 @@ def apply_polygon_blur():
     
 # function to remove from user selection using content aware fill
 def apply_polygon_remove():
-    global current_image, polygon_points
+    global current_image, polygon_points, remove_radius
     
     if not current_image or len(polygon_points) < 3:
         messagebox.showerror("Error", "You need to select at least 3 points.")
@@ -151,7 +179,7 @@ def apply_polygon_remove():
     cv2.fillPoly(mask, [np.array(polygon_points, dtype=np.int32)], 255)
     
     # perform removal
-    inpainted = cv2.inpaint(cv_image, mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
+    inpainted = cv2.inpaint(cv_image, mask, inpaintRadius=remove_radius, flags=cv2.INPAINT_TELEA)
     
     # convert cv back to PIL image
     result = Image.fromarray(cv2.cvtColor(inpainted, cv2.COLOR_BGR2RGB))
@@ -170,6 +198,7 @@ def apply_polygon_remove():
     blur_btn.config(state='disabled')
     if not last_image: undo_btn.config(state="disabled")
 
+# function to undo last selection or last blur/remove
 def undo():
     global current_image, polygon_points
     
@@ -182,13 +211,15 @@ def undo():
         polygon_points = []
         image_canvas.delete("all")
         display_image(current_image)
+        
     # image
     elif last_image:
         current_image = last_image.pop()
         display_image(current_image)
         
+    # change button state
     if not last_image:
-            undo_btn.config(state='disabled')
+        undo_btn.config(state='disabled')
     
         
 root = tk.Tk()
@@ -208,18 +239,26 @@ file_menu.add_command(label="Open", command=open_file)
 file_menu.add_command(label="Save", command=save_file)
 file_menu.add_command(label="Save As", command=save_file_as)
 
+settings_btn = tk.Button(menu_bar, text='Settings')
+settings_btn.pack(side='left', padx=5, pady=5)
+
+settings_menu = tk.Menu(root, tearoff=0)
+settings_menu.add_command(label='Blur Radius', command=set_blur_radius)
+settings_menu.add_command(label='Remove Radius', command=set_remove_radius)
+
 file_btn.bind("<Button-1>", show_file_menu)
+settings_btn.bind("<Button-1>", show_settings_menu)
 
 # buttons
 
-blur_btn = tk.Button(root, text='Blur', state='disabled', bg='light green', command=apply_polygon_blur)
-blur_btn.pack(pady=10)
+blur_btn = tk.Button(menu_bar, text='Blur', state='disabled', bg='light blue', command=apply_polygon_blur)
+blur_btn.pack(side='left', padx=5, pady=5)
 
-remove_btn = tk.Button(root, text='Remove', state='disabled', bg='light blue', command=apply_polygon_remove)
-remove_btn.pack(pady=10)
+remove_btn = tk.Button(menu_bar, text='Remove', state='disabled', bg='light green', command=apply_polygon_remove)
+remove_btn.pack(side='left', padx=5, pady=5)
 
-undo_btn = tk.Button(root, text='Undo', state='disabled', bg='red', command=undo)
-undo_btn.pack(pady=10)
+undo_btn = tk.Button(menu_bar, text='Undo', state='disabled', bg='red', command=undo)
+undo_btn.pack(side='left', padx=5, pady=5)
 
 
 # image editor
