@@ -48,6 +48,9 @@ def open_file():
             current_file = file
             current_image = image
             
+            # reset last image array
+            last_image = []
+            
             # display image in canvas
             display_image(image)
         except Exception as e:
